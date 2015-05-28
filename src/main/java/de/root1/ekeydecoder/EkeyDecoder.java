@@ -153,9 +153,9 @@ public class EkeyDecoder implements Runnable {
                 }
             }
             if (dumpFrame) {
-                log.warn("Raw Frame [{}]: {}", frame.length, String.format(sb.toString(), frame));    
+                log.warn("Raw Frame [{}]: {}", frameLength, String.format(sb.toString(), frame));    
             } else {
-                log.trace("Raw Frame [{}]: {}", frame.length, String.format(sb.toString(), frame));
+                log.trace("Raw Frame [{}]: {}", frameLength, String.format(sb.toString(), frame));
             }
             
         }
