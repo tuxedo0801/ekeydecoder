@@ -12,22 +12,25 @@ import org.slf4j.LoggerFactory;
 public class EkeyDecoder implements Runnable {
 
     private final Logger log = LoggerFactory.getLogger(EkeyDecoder.class);
+    private final Logger rawlog = LoggerFactory.getLogger(EkeyDecoder.class);
 
     /**
      * Puffergröße für empfangene RS485 Frames
      */
     private static final int FRAME_BUFFER_MAX = 256;
+    private static final int DROP_BUFFER_MAX = 1024;
     private EkeyDecoderListener listener;
 
     private enum DecoderState {
-
         WaitingForStart, WaitingForLength, WaitingForLengthExtension, WaitingForContent
     }
     private DecoderState state = DecoderState.WaitingForStart;
 
     int frameLength;
     int[] frame = new int[FRAME_BUFFER_MAX];
+    int[] dropBuffer = new int[DROP_BUFFER_MAX];
     int frameIndex = -1;
+    int dropIndex = -1;
 
     private final InputStream inputstream;
 
@@ -109,13 +112,15 @@ public class EkeyDecoder implements Runnable {
         boolean dumpFrame = false;
         /* Plausibilisierungen */
         if ((frame[0] != 0x02)) {
-            log.warn("head wrong");
+            log.debug("head wrong");
             dumpFrame=true;
         }
         if (frame[frameLength - 1] != 0x03) {
-            log.warn("tail wrong");
+            log.debug("tail wrong");
             dumpFrame=true;
         }
+        
+//        rawlog.trace(frameToHexString());
 
         unstuff();
         
@@ -145,17 +150,11 @@ public class EkeyDecoder implements Runnable {
         
         */
         if (log.isTraceEnabled() || dumpFrame) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < frameLength; i++) {
-                sb.append(String.format("%02x", frame[i]));
-                if (i < frameLength) {
-                    sb.append(" ");
-                }
-            }
+            
             if (dumpFrame) {
-                log.warn("Raw Frame [{}]: {}", frameLength, String.format(sb.toString(), frame));    
+                log.debug("Raw Frame [{}]: {}", frameLength, frameToHexString(frameLength, frame));    
             } else {
-                log.trace("Raw Frame [{}]: {}", frameLength, String.format(sb.toString(), frame));
+                log.trace("Raw Frame [{}]: {}", frameLength, frameToHexString(frameLength, frame));
             }
             
         }
@@ -166,6 +165,17 @@ public class EkeyDecoder implements Runnable {
         }
 
     }
+    
+    private String frameToHexString(int len, int[] buffer) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < len; i++) {
+            sb.append(String.format("%02x", buffer[i]));
+            if (i < len) {
+                sb.append(" ");
+            }
+        }
+        return String.format(sb.toString(), frame);
+    }
 
     // Hier kommen die empfangenen Bytes einzeln rein
     private void byteReceived(int n) {
@@ -173,9 +183,17 @@ public class EkeyDecoder implements Runnable {
         switch (state) {
             case WaitingForStart:
                 if (n == 2) {
+                    if (dropIndex!=-1) {
+                        log.trace("Dropped data [{}]: {}",dropIndex+1, frameToHexString(dropIndex+1, dropBuffer));
+                        dropIndex = -1;
+                    }
                     state = DecoderState.WaitingForLength;
                     frame[0] = n;
                     log.trace("Waiting for length");
+                } else {
+//                    log.trace("Dropping byte while waiting for start: {}", String.format("%02x", n));
+                    dropIndex++;
+                    dropBuffer[dropIndex] = n;
                 }
                 break;
             case WaitingForLength:
@@ -206,7 +224,7 @@ public class EkeyDecoder implements Runnable {
                 break;
             case WaitingForContent:
                 if (frameIndex < frameLength) {
-                    log.trace("Received index {} (Byte {} of {})", new Object[]{frameIndex, frameIndex + 1, frameLength});
+//                    log.trace("Received index {} (Byte {} of {})", new Object[]{frameIndex, frameIndex + 1, frameLength});
                     frame[frameIndex] = n;
                     frameIndex++;
                 } else {
