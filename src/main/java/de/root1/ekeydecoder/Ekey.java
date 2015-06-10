@@ -21,7 +21,7 @@ public class Ekey {
 
     static {
         if (System.getProperty("java.util.logging.config.file") == null) {
-            System.out.println("Please specify logfile by passing '-Djava.util.logging.config.file=<logconfig-file>' to JVM");
+            System.out.println("Please specify logfile by passing '-Djava.util.logging.config.file=<logconfig-file>' to JVM to get advanced log possibilities.");
             LogFormatter formatter = new LogFormatter();
             Handler[] handlers = java.util.logging.Logger.getLogger("").getHandlers();
             for (Handler handler : handlers) {
@@ -32,8 +32,9 @@ public class Ekey {
     private InputStream is;
     private RS232 rs232;
     private Knx knx;
+    private final File confdir;
 
-    private Ekey() {
+    private Ekey(File confdir) {
 //        Runtime.getRuntime().addShutdownHook(new Thread("ShutdownHook") {
 //            public void run() {
 //                log.info("CTRL+C detected. Shutdown.");
@@ -43,24 +44,26 @@ public class Ekey {
 //                }
 //            }
 //        });
+        
+        this.confdir = confdir;
 
     }
 
-    public Ekey(File f) throws IOException, KnxException {
-        this();
+    public Ekey(File confdir, File f) throws IOException, KnxException {
+        this(confdir);
         is = new FileInputStream(f);
         work();
     }
 
-    public Ekey(String host, int port) throws IOException, KnxException {
-        this();
+    public Ekey(File confdir, String host, int port) throws IOException, KnxException {
+        this(confdir);
         Socket s = new Socket(host, port);
         is = s.getInputStream();
         work();
     }
 
-    public Ekey(String device) throws IOException, KnxException {
-        this();
+    public Ekey(File confdir, String device) throws IOException, KnxException {
+        this(confdir);
         RS232Config config = new RS232Config(device,
                 RS232Config.BAUDRATE_115200,
                 RS232Config.DATABITS_8,
@@ -68,17 +71,18 @@ public class Ekey {
                 RS232Config.STOPBITS_1,
                 RS232Config.FLOWCONTROL_NONE,
                 1000);
-        rs232 = new RS232("eKeyHack", config);
+        rs232 = new RS232("ekeydecoder", config);
         is = rs232.getInputStream();
         work();
     }
 
     private void work() throws IOException, KnxException {
-        File f = new File("finger.properties");
+
+        File f = new File(confdir, "finger.properties");
         final Properties fingerprop = new Properties();
         fingerprop.load(new FileReader(f));
 
-        File k = new File("knx.properties");
+        File k = new File(confdir, "knx.properties");
         final Properties knxprop = new Properties();
         knxprop.load(new FileReader(k));
 
@@ -116,7 +120,7 @@ public class Ekey {
                         if (stringFormat != null) {
                             string = String.format(stringFormat, fingerhash, name);
                         }
-                        if (string.length()>14) {
+                        if (string.length() > 14) {
                             string = string.substring(0, 14);
                         }
                         try {
@@ -138,35 +142,42 @@ public class Ekey {
 
         log.debug("Args (" + args.length + "): " + Arrays.toString(args));
 
+        File configdir = new File(".");
+
         if (args.length == 2) {
-
-            if (args[0].equals("-file")) {
-                log.info("Using File-Mode: '" + args[1] + "'");
-                File f = new File(args[1]);
-                new Ekey(f);
-            } else if (args[0].equals("-device")) {
-                String device = args[1];
-                log.info("Using Device-Mode: '" + device + "'");
-                new Ekey(device);
-            } else if (args[0].equals("-socket")) {
-                String socket = args[1];
-                log.info("Using Socket-Mode: '" + socket + "'");
-                String host = socket.split(":")[0];
-                int port = Integer.parseInt(socket.split(":")[1]);
-                new Ekey(host, port);
-            } else {
-                log.error("No file, no device, no socket. EXITING!");
-                System.exit(1);
+            if (args[0].equals("-confdir")) {
+                configdir = new File(args[1]);
             }
+        }
+        log.info("Configdir: {}", configdir);
+        File c = new File(configdir, "config.properties");
+        final Properties configprop = new Properties();
+        configprop.load(new FileReader(c));
 
-        } else {
-            System.out.println("insufficient arguments.\n"
-                    + "need: -device /dev/<device>\n"
-                    + "or: -socket <host>:<port>\n"
-                    + "or: -file <dumpfile>\n");
-            System.exit(1);
+        String type = configprop.getProperty("type").toUpperCase();
+        String setting = configprop.getProperty("setting");
+
+        switch (type) {
+            case "FILE":
+                log.info("Using File-Mode: '" + setting + "'");
+                new Ekey(configdir, new File(setting));
+                break;
+            case "DEVICE":
+                log.info("Using Device-Mode: '" + setting + "'");
+                new Ekey(configdir, setting);
+                break;
+            case "SOCKET":
+                log.info("Using Socket-Mode: '" + setting + "'");
+                String host = setting.split(":")[0];
+                int port = Integer.parseInt(setting.split(":")[1]);
+                new Ekey(configdir, host, port);
+                break;
+            default:
+                log.error("Type '{}' unknown.", type);
         }
 
+
     }
+
 
 }
