@@ -12,6 +12,7 @@ import java.net.Socket;
 import java.util.Arrays;
 import java.util.Properties;
 import java.util.logging.Handler;
+import java.util.logging.Level;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +34,7 @@ public class Ekey {
     private RS232 rs232;
     private Knx knx;
     private final File confdir;
+    private boolean running;
 
     private Ekey(File confdir) {
 //        Runtime.getRuntime().addShutdownHook(new Thread("ShutdownHook") {
@@ -44,7 +46,7 @@ public class Ekey {
 //                }
 //            }
 //        });
-        
+
         this.confdir = confdir;
 
     }
@@ -78,6 +80,7 @@ public class Ekey {
 
     private void work() throws IOException, KnxException {
 
+        running = true;
         File f = new File(confdir, "finger.properties");
         final Properties fingerprop = new Properties();
         fingerprop.load(new FileReader(f));
@@ -134,6 +137,21 @@ public class Ekey {
             }
 
         });
+
+        decoder.waitForTermination();
+        if (is != null) {
+            try {
+                is.close();
+            } catch (IOException ex) {
+                // nothing to do
+            }
+        }
+        log.warn("decoder terminated. Stream closed.");
+        running = false;
+    }
+
+    public boolean isRunning() {
+        return running;
     }
 
     public static void main(String[] args) throws KnxException, FileNotFoundException, IOException {
@@ -150,34 +168,53 @@ public class Ekey {
             }
         }
         log.info("Configdir: {}", configdir);
-        File c = new File(configdir, "config.properties");
-        final Properties configprop = new Properties();
-        configprop.load(new FileReader(c));
 
-        String type = configprop.getProperty("type").toUpperCase();
-        String setting = configprop.getProperty("setting");
+        boolean reconnactable = true;
 
-        switch (type) {
-            case "FILE":
-                log.info("Using File-Mode: '" + setting + "'");
-                new Ekey(configdir, new File(setting));
-                break;
-            case "DEVICE":
-                log.info("Using Device-Mode: '" + setting + "'");
-                new Ekey(configdir, setting);
-                break;
-            case "SOCKET":
-                log.info("Using Socket-Mode: '" + setting + "'");
-                String host = setting.split(":")[0];
-                int port = Integer.parseInt(setting.split(":")[1]);
-                new Ekey(configdir, host, port);
-                break;
-            default:
-                log.error("Type '{}' unknown.", type);
+        while (true) {
+            try {
+                File c = new File(configdir, "config.properties");
+                final Properties configprop = new Properties();
+                configprop.load(new FileReader(c));
+
+                String type = configprop.getProperty("type").toUpperCase();
+                String setting = configprop.getProperty("setting");
+
+                switch (type) {
+                    case "FILE":
+                        reconnactable = false;
+                        log.info("Using File-Mode: '" + setting + "'");
+                        new Ekey(configdir, new File(setting));
+                        break;
+                    case "DEVICE":
+                        log.info("Using Device-Mode: '" + setting + "'");
+                        new Ekey(configdir, setting);
+                        break;
+                    case "SOCKET":
+                        log.info("Using Socket-Mode: '" + setting + "'");
+                        String host = setting.split(":")[0];
+                        int port = Integer.parseInt(setting.split(":")[1]);
+                        new Ekey(configdir, host, port);
+                        break;
+                    default:
+                        log.error("Type '{}' unknown.", type);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            } finally {
+                if (reconnactable) {
+                    log.info("Trying to get connection back online in 5sec...");
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException ex) {
+                    }
+                } else {
+                    System.exit(0);
+                }
+            }
+
         }
 
-
     }
-
 
 }

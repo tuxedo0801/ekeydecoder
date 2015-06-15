@@ -2,6 +2,8 @@ package de.root1.ekeydecoder;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.Semaphore;
+import java.util.logging.Level;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +22,11 @@ public class EkeyDecoder implements Runnable {
     private static final int FRAME_BUFFER_MAX = 256;
     private static final int DROP_BUFFER_MAX = 1024;
     private EkeyDecoderListener listener;
+    private final Semaphore running = new Semaphore(1);
+
+    void waitForTermination() {
+        running.acquireUninterruptibly();
+    }
 
     private enum DecoderState {
         WaitingForStart, WaitingForLength, WaitingForLengthExtension, WaitingForContent
@@ -35,6 +42,11 @@ public class EkeyDecoder implements Runnable {
     private final InputStream inputstream;
 
     public EkeyDecoder(InputStream inputstream) {
+        try {
+            running.acquire();
+        } catch (InterruptedException ex) {
+            ex.printStackTrace();
+        }
         this.inputstream = inputstream;
         new Thread(this, "EkeyDecoder").start();
     }
@@ -251,7 +263,7 @@ public class EkeyDecoder implements Runnable {
 
     @Override
     public void run() {
-
+        
         try {
             int intValue;
             while ((intValue = inputstream.read()) != -1) {
@@ -260,8 +272,12 @@ public class EkeyDecoder implements Runnable {
             log.warn("Stream finished");
         } catch (IOException ex) {
             ex.printStackTrace();
+        } finally {
+            running.release();
         }
-
     }
+
+    
+    
 
 }
