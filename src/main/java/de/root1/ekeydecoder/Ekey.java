@@ -179,6 +179,9 @@ public class Ekey {
 
                 String type = configprop.getProperty("type").toUpperCase();
                 String setting = configprop.getProperty("setting");
+                
+                log.info("Config: type='{}'", type);
+                log.info("Config: setting='{}'", setting);
 
                 switch (type) {
                     case "FILE":
@@ -197,6 +200,7 @@ public class Ekey {
                         new Ekey(configdir, host, port);
                         break;
                     default:
+                        reconnactable = false;
                         log.error("Type '{}' unknown.", type);
                 }
             } catch (Exception ex) {
@@ -218,3 +222,4 @@ public class Ekey {
     }
 
 }
+
