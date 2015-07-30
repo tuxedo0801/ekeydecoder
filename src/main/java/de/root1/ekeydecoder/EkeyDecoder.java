@@ -38,6 +38,7 @@ public class EkeyDecoder implements Runnable {
     int[] dropBuffer = new int[DROP_BUFFER_MAX];
     int frameIndex = -1;
     int dropIndex = -1;
+    boolean dropOverflow = false;
 
     private final InputStream inputstream;
 
@@ -196,8 +197,9 @@ public class EkeyDecoder implements Runnable {
             case WaitingForStart:
                 if (n == 2) {
                     if (dropIndex!=-1) {
-                        log.trace("Dropped data [{}]: {}",dropIndex+1, frameToHexString(dropIndex+1, dropBuffer));
+                        log.trace("Dropped data [{}] (overflow={}): {}",dropIndex+1, dropOverflow, frameToHexString(dropIndex+1, dropBuffer));
                         dropIndex = -1;
+                        dropOverflow = false;
                     }
                     state = DecoderState.WaitingForLength;
                     frame[0] = n;
@@ -205,6 +207,10 @@ public class EkeyDecoder implements Runnable {
                 } else {
 //                    log.trace("Dropping byte while waiting for start: {}", String.format("%02x", n));
                     dropIndex++;
+                    if (dropIndex>1024) {
+                        dropIndex = 0;
+                        dropOverflow = true;
+                    }
                     dropBuffer[dropIndex] = n;
                 }
                 break;
